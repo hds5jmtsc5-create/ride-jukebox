@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Ride Jukebox</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0E1116; --surface:#171C24; --line:#232B36;
+    --amber:#FFB454; --amber-dim:#8a6430;
+    --text:#EFEDE6; --muted:#8B95A3;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  body{min-height:100dvh;display:flex;flex-direction:column;align-items:center}
+  .wrap{width:100%;max-width:520px;padding:16px 18px 40px}
+
+  /* Cab-sign header */
+  .sign{display:flex;align-items:center;justify-content:space-between;
+    border:1px solid var(--amber-dim);border-radius:8px;
+    padding:10px 14px;margin-bottom:28px;
+    box-shadow:0 0 18px rgba(255,180,84,.08) inset}
+  .sign .brand{font-family:"Bricolage Grotesque",system-ui;font-weight:800;
+    letter-spacing:.14em;font-size:13px;color:var(--amber);text-transform:uppercase}
+  .lang{background:none;border:1px solid var(--line);color:var(--muted);
+    border-radius:6px;padding:6px 10px;font-size:12px;letter-spacing:.06em;cursor:pointer}
+  .lang:active{color:var(--text)}
+
+  h1{font-family:"Bricolage Grotesque",system-ui;font-weight:800;
+    font-size:clamp(30px,8.5vw,42px);line-height:1.05;margin-bottom:6px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+
+  .searchbox{position:relative}
+  input[type=search]{width:100%;background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;color:var(--text);font-size:17px;padding:16px 16px;
+    outline:none;appearance:none}
+  input[type=search]:focus{border-color:var(--amber)}
+  input::placeholder{color:var(--muted)}
+
+  .results{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+  .track{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:10px 12px;color:var(--text);cursor:pointer;min-height:64px}
+  .track:active{border-color:var(--amber)}
+  .track img{width:44px;height:44px;border-radius:6px;background:var(--line);flex:none}
+  .track .meta{min-width:0;flex:1}
+  .track .name{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .track .artist{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .track .add{flex:none;font-family:"Bricolage Grotesque",system-ui;font-weight:800;
+    color:var(--amber);font-size:22px;padding:0 6px}
+
+  .status{margin-top:16px;text-align:center;color:var(--muted);font-size:14px;min-height:20px}
+
+  /* Ticket-stub confirmation */
+  .ticket{position:fixed;left:50%;bottom:22px;transform:translate(-50%,140%);
+    background:var(--amber);color:#1a1206;font-weight:700;font-size:15px;
+    padding:14px 22px;border-radius:12px;transition:transform .35s cubic-bezier(.2,.9,.3,1.2);
+    box-shadow:0 8px 30px rgba(0,0,0,.5);max-width:90%;text-align:center}
+  .ticket.show{transform:translate(-50%,0)}
+  @media (prefers-reduced-motion:reduce){.ticket{transition:none}}
+
+  .cooldown{margin-top:26px;text-align:center;color:var(--muted);font-size:15px;
+    font-variant-numeric:tabular-nums}
+  .cooldown b{color:var(--amber)}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="sign">
+    <span class="brand" id="brand">YOUR RIDE · JUKEBOX</span>
+    <button class="lang" id="langBtn" aria-label="Switch language">FR</button>
+  </div>
+
+  <h1 id="title">What do you want to hear?</h1>
+  <p class="sub" id="subtitle">Pick a song — it plays next in this car.</p>
+
+  <div id="searchArea">
+    <div class="searchbox">
+      <input type="search" id="q" autocomplete="off" placeholder="Song or artist…" enterkeyhint="search">
+    </div>
+    <div class="results" id="results"></div>
+    <p class="status" id="status"></p>
+  </div>
+
+  <div class="cooldown hidden" id="cooldown"></div>
+</div>
+
+<div class="ticket" id="ticket">✓</div>
+
+<script>
+const COOLDOWN_S = 90; // seconds a passenger must wait between requests
+
+const i18n = {
+  en: {
+    title: "What do you want to hear?",
+    subtitle: "Pick a song — it plays next in this car.",
+    placeholder: "Song or artist…",
+    searching: "Searching…",
+    none: "No results. Try another search.",
+    queued: "✓ Coming up next — enjoy the ride!",
+    noDevice: "Music isn't playing right now — ask the driver to start Spotify.",
+    error: "Something went wrong. Try again.",
+    cooldown: "Next request in",
+    langBtn: "FR"
+  },
+  fr: {
+    title: "Qu'est-ce qu'on écoute?",
+    subtitle: "Choisis une chanson — elle joue ensuite dans la voiture.",
+    placeholder: "Chanson ou artiste…",
+    searching: "Recherche…",
+    none: "Aucun résultat. Essaie autre chose.",
+    queued: "✓ C'est la prochaine — bonne route!",
+    noDevice: "La musique ne joue pas — demande au chauffeur de lancer Spotify.",
+    error: "Une erreur est survenue. Réessaie.",
+    cooldown: "Prochaine demande dans",
+    langBtn: "EN"
+  }
+};
+
+let lang = (navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
+const $ = id => document.getElementById(id);
+
+function applyLang(){
+  const t = i18n[lang];
+  $("title").textContent = t.title;
+  $("subtitle").textContent = t.subtitle;
+  $("q").placeholder = t.placeholder;
+  $("langBtn").textContent = t.langBtn;
+  document.documentElement.lang = lang;
+}
+$("langBtn").onclick = () => { lang = lang === "en" ? "fr" : "en"; applyLang(); };
+applyLang();
+
+// --- cooldown ---
+function cooldownLeft(){
+  const until = +localStorage.getItem("rj_until") || 0;
+  return Math.max(0, Math.ceil((until - Date.now()) / 1000));
+}
+let cdTimer = null;
+function renderCooldown(){
+  const left = cooldownLeft();
+  if (left > 0){
+    $("searchArea").classList.add("hidden");
+    $("cooldown").classList.remove("hidden");
+    $("cooldown").innerHTML = i18n[lang].cooldown + " <b>" + left + "s</b>";
+    if (!cdTimer) cdTimer = setInterval(renderCooldown, 1000);
+  } else {
+    $("searchArea").classList.remove("hidden");
+    $("cooldown").classList.add("hidden");
+    if (cdTimer){ clearInterval(cdTimer); cdTimer = null; }
+  }
+}
+renderCooldown();
+
+// --- search ---
+let debounce = null;
+$("q").addEventListener("input", () => {
+  clearTimeout(debounce);
+  const q = $("q").value.trim();
+  if (q.length < 2){ $("results").innerHTML = ""; $("status").textContent = ""; return; }
+  $("status").textContent = i18n[lang].searching;
+  debounce = setTimeout(() => search(q), 350);
+});
+
+async function search(q){
+  try{
+    const r = await fetch("/api/search?q=" + encodeURIComponent(q));
+    const data = await r.json();
+    const tracks = data.tracks || [];
+    $("status").textContent = tracks.length ? "" : i18n[lang].none;
+    $("results").innerHTML = "";
+    for (const t of tracks){
+      const btn = document.createElement("button");
+      btn.className = "track";
+      btn.innerHTML =
+        '<img alt="" src="' + t.image + '">' +
+        '<span class="meta"><span class="name"></span><br><span class="artist"></span></span>' +
+        '<span class="add">+</span>';
+      btn.querySelector(".name").textContent = t.name;
+      btn.querySelector(".artist").textContent = t.artist;
+      btn.onclick = () => queueTrack(t.uri, btn);
+      $("results").appendChild(btn);
+    }
+  }catch(e){
+    $("status").textContent = i18n[lang].error;
+  }
+}
+
+async function queueTrack(uri, btn){
+  btn.disabled = true;
+  try{
+    const r = await fetch("/api/queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uri })
+    });
+    const data = await r.json();
+    if (data.ok){
+      showTicket(i18n[lang].queued);
+      localStorage.setItem("rj_until", Date.now() + COOLDOWN_S * 1000);
+      $("q").value = ""; $("results").innerHTML = "";
+      setTimeout(renderCooldown, 1200);
+    } else if (data.reason === "no_active_device"){
+      showTicket(i18n[lang].noDevice);
+      btn.disabled = false;
+    } else {
+      showTicket(i18n[lang].error);
+      btn.disabled = false;
+    }
+  }catch(e){
+    showTicket(i18n[lang].error);
+    btn.disabled = false;
+  }
+}
+
+let ticketTimer = null;
+function showTicket(msg){
+  const el = $("ticket");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(ticketTimer);
+  ticketTimer = setTimeout(() => el.classList.remove("show"), 3200);
+}
+</script>
+</body>
+</html>

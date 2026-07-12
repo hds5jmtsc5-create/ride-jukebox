@@ -1,0 +1,6 @@
+{
+  "name": "ride-jukebox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "QR song request jukebox for rideshare passengers - queues songs to the driver's Spotify"
+}
